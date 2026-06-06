@@ -12,7 +12,7 @@ Après import, l'utilisateur peut marquer le film vu / le noter via /me/films
 """
 
 import requests
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -35,12 +35,11 @@ def decouvrir(
     pays: str | None = Query(None, description="Code pays ISO (FR, US, JP…)"),
     page: int = Query(1, ge=1, le=500),
 ):
-    """Renvoie une liste de films à proposer à l'utilisateur pour enrichir sa
-    base, en SAUTANT ceux qu'il a déjà notés/marqués. Pagine sur TMDb : si une
-    page ne contient que des films déjà connus, on passe automatiquement à la
-    suivante (jusqu'à 5 pages d'affilée) pour ne jamais renvoyer du vide.
+    """Renvoie une fournée de films à proposer, en SAUTANT ceux que
+    l'utilisateur a déjà traités. Si aucune année n'est imposée, chaque appel
+    au service pioche une année différente (1960–2026) pour varier les époques.
+    On répète jusqu'à obtenir assez de nouveautés (au plus 6 essais).
     """
-    # tmdb_id déjà présents dans la base perso de l'utilisateur
     deja = {
         row[0]
         for row in db.query(Film.tmdb_id)
@@ -50,20 +49,13 @@ def decouvrir(
     }
 
     try:
-        film_a_proposer = []
-        page_courante = page
-        for _ in range(5):  # au plus 5 pages pour trouver des nouveautés
-            res = tmdb.decouvrir(page=page_courante, annee=annee, pays=pays)
-            nouveaux = [f for f in res["films"] if f["tmdb_id"] not in deja]
-            film_a_proposer.extend(nouveaux)
-            page_courante += 1
-            if film_a_proposer or page_courante > res["total_pages"]:
+        a_proposer = []
+        for _ in range(6):
+            res = tmdb.decouvrir(page=page, annee=annee, pays=pays)
+            a_proposer.extend(f for f in res["films"] if f["tmdb_id"] not in deja)
+            if len(a_proposer) >= 10:
                 break
-        return {
-            "films": film_a_proposer,
-            "page_suivante": page_courante,
-            "total_pages": res["total_pages"],
-        }
+        return {"films": a_proposer, "page_suivante": page + 1, "total_pages": res["total_pages"]}
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
     except requests.HTTPError as e:
@@ -73,21 +65,31 @@ def decouvrir(
 @router.post("/statut/{tmdb_id}")
 def importer_et_marquer(
     tmdb_id: int,
+    background: BackgroundTasks,
     vu: bool = Query(...),
     note: float | None = Query(None, ge=0, le=10),
+    titre: str | None = Query(None),
+    annee: int | None = Query(None),
+    affiche: str | None = Query(None),
+    note_public: float | None = Query(None),
+    resume: str | None = Query(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """Importe un film TMDb (s'il n'existe pas) PUIS enregistre le statut perso
-    de l'utilisateur (vu/pas vu, note). Sert aux pages « Enrichir mon profil »
-    et « J'ai visionné » : un seul appel fait tout.
+    """Enregistre INSTANTANÉMENT le statut de l'utilisateur sur un film.
+
+    - crée un film minimal à partir des infos déjà connues (aucun appel TMDb),
+    - enregistre le statut perso (vu/pas vu, note),
+    - planifie l'enrichissement complet (acteurs, genres, résumé) en tâche de
+      fond, pour ne pas faire attendre l'utilisateur.
     """
     try:
-        film = tmdb.importer_film(db, tmdb_id)
+        film = tmdb.creer_film_minimal(
+            db, tmdb_id, titre=titre, annee=annee,
+            affiche=affiche, note_public=note_public, resume=resume,
+        )
     except RuntimeError as e:
         raise HTTPException(status_code=503, detail=str(e))
-    except requests.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Erreur TMDb : {e}")
 
     uf = (
         db.query(UserFilm)
@@ -103,6 +105,10 @@ def importer_et_marquer(
     if note is not None:
         uf.note = note
     db.commit()
+
+    # Enrichissement différé (ne bloque pas la réponse).
+    background.add_task(tmdb.enrichir_film, tmdb_id)
+
     return {"film_id": film.id, "titre": film.titre_francais, "vu": vu, "note": note}
 
 

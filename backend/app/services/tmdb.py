@@ -54,32 +54,115 @@ def _allege(r: dict) -> dict:
     }
 
 
+import random
+
+ANNEE_MIN = 1960
+ANNEE_MAX = 2026
+
+
 def decouvrir(page: int = 1, annee: int | None = None,
               pays: str | None = None) -> dict:
-    """Renvoie une page de films « à découvrir », triés par popularité.
+    """Renvoie une page de films « à découvrir ».
 
-    S'appuie sur /discover/movie de TMDb, qui pagine sur des dizaines de
-    milliers de films (20 par page, jusqu'à 500 pages). Filtres optionnels :
-      - annee : année de sortie exacte
+    S'appuie sur /discover/movie de TMDb. Filtres optionnels :
+      - annee : année de sortie exacte (si l'utilisateur l'impose)
       - pays  : code ISO 3166-1 du pays d'origine (ex. "FR", "US", "JP")
+
+    Variété des années : si aucune année n'est imposée, on ne trie PAS par
+    popularité globale (qui remonte surtout les sorties récentes). On tire une
+    année au hasard dans [1960, 2026] et on récupère ses films les plus
+    populaires. Résultat : un mélange d'époques au fil des fournées.
     """
     params = {
-        "sort_by": "popularity.desc",
         "page": page,
         "vote_count.gte": 200,        # films suffisamment connus
         "include_adult": "false",
+        "sort_by": "popularity.desc",
     }
     if annee is not None:
+        # L'utilisateur a choisi une année précise : on la respecte.
         params["primary_release_year"] = annee
+    else:
+        # Pas d'année imposée : on en tire une au hasard pour varier les époques.
+        params["primary_release_year"] = random.randint(ANNEE_MIN, ANNEE_MAX)
     if pays:
         params["with_origin_country"] = pays.upper()
 
     data = _get("/discover/movie", **params)
     return {
         "page": data.get("page", page),
-        "total_pages": min(data.get("total_pages", 1), 500),  # TMDb plafonne à 500
+        "total_pages": min(data.get("total_pages", 1), 500),
+        "annee_tiree": params["primary_release_year"],
         "films": [_allege(r) for r in data.get("results", [])],
     }
+
+
+def creer_film_minimal(db: Session, tmdb_id: int, titre=None, annee=None,
+                       affiche=None, note_public=None, resume=None) -> Film:
+    """Crée RAPIDEMENT un film à partir des infos déjà connues (sans appel TMDb
+    supplémentaire), ou le renvoie s'il existe déjà. Les détails (acteurs,
+    réalisateurs, genres, résumé Wikipédia) seront complétés ensuite par
+    enrichir_film() en tâche de fond.
+    """
+    existant = db.query(Film).filter(Film.tmdb_id == tmdb_id).first()
+    if existant is not None:
+        return existant
+    film = Film(
+        tmdb_id=tmdb_id,
+        titre_francais=titre,
+        titre_original=titre,
+        annee=int(annee) if annee else None,
+        affiche=affiche,
+        note_public=note_public,
+        resume=resume,
+    )
+    db.add(film)
+    db.commit()
+    db.refresh(film)
+    return film
+
+
+def enrichir_film(tmdb_id: int):
+    """Complète un film déjà créé avec ses détails TMDb (genres, pays, thèmes,
+    réalisateurs, acteurs) et son résumé Wikipédia. Conçue pour tourner en
+    tâche de fond : ouvre sa propre session DB et ne bloque pas l'utilisateur.
+    Ne fait rien si le film est déjà enrichi (genres déjà présents)."""
+    from app.database import SessionLocal
+    db = SessionLocal()
+    try:
+        film = db.query(Film).filter(Film.tmdb_id == tmdb_id).first()
+        if film is None or film.genres:   # déjà enrichi
+            return
+        d = _details_film(tmdb_id)
+        annee_str = (d.get("release_date") or "")[:4] or None
+        annee = int(annee_str) if annee_str else None
+
+        film.titre_original = d.get("original_title")
+        film.titre_francais = d.get("title")
+        film.duree = d.get("runtime")
+        if not film.resume:
+            film.resume = _resume_wikipedia(d.get("title") or d.get("original_title"), annee)
+        film.pays = [_vocab(db, Pays, c["name"]) for c in d.get("production_countries", [])]
+        film.genres = [_vocab(db, Genre, g["name"]) for g in d.get("genres", [])]
+        film.themes = [
+            _vocab(db, Theme, k["name"])
+            for k in d.get("keywords", {}).get("keywords", [])
+        ]
+        credits = d.get("credits", {})
+        for membre in [m for m in credits.get("crew", []) if m.get("job") == "Director"]:
+            film.realisateurs.append(_personne(db, membre["id"], "réalisateur"))
+        db.flush()
+        for a in credits.get("cast", [])[:NB_ACTEURS]:
+            pers = _personne(db, a["id"], "acteur")
+            db.add(FilmActeur(
+                film_id=film.id, personne_id=pers.id,
+                role=a.get("character"), ordre=a.get("order"),
+            ))
+        db.commit()
+    except Exception:
+        db.rollback()   # un échec d'enrichissement ne casse rien
+    finally:
+        db.close()
 
 
 def rechercher(query: str, limite: int = 8) -> list[dict]:
