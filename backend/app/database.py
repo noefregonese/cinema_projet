@@ -17,10 +17,24 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 # URL de connexion. Par défaut SQLite local ; surchargée par .env (DATABASE_URL).
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./cinema.db")
 
-# `check_same_thread` n'est nécessaire que pour SQLite (limitation de SQLite + FastAPI).
-connect_args = {"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {}
+# Certains hébergeurs (dont Neon) fournissent une URL en "postgres://" alors que
+# SQLAlchemy attend "postgresql://". On normalise pour éviter une erreur.
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(DATABASE_URL, connect_args=connect_args)
+est_sqlite = DATABASE_URL.startswith("sqlite")
+
+# `check_same_thread` n'est nécessaire que pour SQLite (limitation SQLite + FastAPI).
+connect_args = {"check_same_thread": False} if est_sqlite else {}
+
+# pool_pre_ping : vérifie que la connexion est vivante avant de l'utiliser.
+# Indispensable avec une base distante (Neon) qui peut couper les connexions
+# inactives — évite les erreurs après une période de veille.
+engine = create_engine(
+    DATABASE_URL,
+    connect_args=connect_args,
+    pool_pre_ping=not est_sqlite,
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

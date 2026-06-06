@@ -7,3 +7,5 @@ bcrypt
 python-multipart
 python-dotenv
 requests
+psycopg[binary]
+gunicorn
