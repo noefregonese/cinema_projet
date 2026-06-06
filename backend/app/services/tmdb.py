@@ -42,6 +42,46 @@ def _get(endpoint: str, **params):
     return r.json()
 
 
+def _allege(r: dict) -> dict:
+    """Transforme un résultat TMDb brut en objet léger pour l'UI."""
+    return {
+        "tmdb_id": r["id"],
+        "titre": r.get("title") or r.get("original_title"),
+        "annee": (r.get("release_date") or "")[:4] or None,
+        "affiche": f"{IMG}{r['poster_path']}" if r.get("poster_path") else None,
+        "note_public": r.get("vote_average"),
+        "resume": r.get("overview") or None,
+    }
+
+
+def decouvrir(page: int = 1, annee: int | None = None,
+              pays: str | None = None) -> dict:
+    """Renvoie une page de films « à découvrir », triés par popularité.
+
+    S'appuie sur /discover/movie de TMDb, qui pagine sur des dizaines de
+    milliers de films (20 par page, jusqu'à 500 pages). Filtres optionnels :
+      - annee : année de sortie exacte
+      - pays  : code ISO 3166-1 du pays d'origine (ex. "FR", "US", "JP")
+    """
+    params = {
+        "sort_by": "popularity.desc",
+        "page": page,
+        "vote_count.gte": 200,        # films suffisamment connus
+        "include_adult": "false",
+    }
+    if annee is not None:
+        params["primary_release_year"] = annee
+    if pays:
+        params["with_origin_country"] = pays.upper()
+
+    data = _get("/discover/movie", **params)
+    return {
+        "page": data.get("page", page),
+        "total_pages": min(data.get("total_pages", 1), 500),  # TMDb plafonne à 500
+        "films": [_allege(r) for r in data.get("results", [])],
+    }
+
+
 def rechercher(query: str, limite: int = 8) -> list[dict]:
     """Cherche des films sur TMDb. Renvoie une liste allégée pour l'UI."""
     data = _get("/search/movie", query=query)
