@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.database import Base, engine
 import app.models          # enregistre tous les modèles sur Base
-from app.routers import auth, films, mes_films, import_tmdb
+from app.routers import auth, films, mes_films, import_tmdb, stats
 
 # Crée les tables manquantes au démarrage (dev).
 Base.metadata.create_all(bind=engine)
@@ -38,6 +38,7 @@ app.include_router(auth.router)
 app.include_router(films.router)
 app.include_router(mes_films.router)
 app.include_router(import_tmdb.router)
+app.include_router(stats.router)
 
 
 @app.get("/")

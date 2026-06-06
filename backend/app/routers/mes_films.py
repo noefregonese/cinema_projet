@@ -33,8 +33,16 @@ def mes_films(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
     vu: bool | None = Query(None, description="Filtre : vus (true) ou à voir (false)"),
+    tri: str = Query("recent", description="note | annee | recent | note_public"),
 ):
-    """Liste les films que l'utilisateur a dans sa liste, avec son statut."""
+    """Liste les films que l'utilisateur a dans sa liste, avec son statut.
+
+    Tris disponibles :
+      - note         : ma note décroissante (films vus)
+      - annee        : année du film décroissante
+      - recent       : ajout le plus récent d'abord (défaut)
+      - note_public  : note du public décroissante (utile pour les non-vus)
+    """
     q = (
         db.query(UserFilm)
         .filter(UserFilm.user_id == user.id)
@@ -43,7 +51,14 @@ def mes_films(
     if vu is not None:
         q = q.filter(UserFilm.vu == vu)
 
-    q = q.order_by(UserFilm.urgence.desc(), Film.annee.desc())
+    if tri == "note":
+        q = q.order_by(UserFilm.note.desc().nullslast(), Film.annee.desc())
+    elif tri == "annee":
+        q = q.order_by(Film.annee.desc().nullslast())
+    elif tri == "note_public":
+        q = q.order_by(Film.note_public.desc().nullslast())
+    else:  # recent
+        q = q.order_by(UserFilm.ajoute_le.desc())
 
     return [
         FilmAvecStatut(film=uf.film, statut=StatutPerso.model_validate(uf))
