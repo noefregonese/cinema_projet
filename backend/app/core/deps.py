@@ -47,3 +47,14 @@ def get_current_user(
         raise erreur_401
 
     return user
+
+
+def get_admin(user: User = Depends(get_current_user)) -> User:
+    """Comme get_current_user, mais exige en plus que l'utilisateur soit admin.
+    Sert à protéger les endpoints d'export/administration."""
+    if not user.est_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Accès réservé à l'administrateur.",
+        )
+    return user

@@ -22,6 +22,7 @@ class User(Base):
     pseudo = Column(String)
     hash_mdp = Column(String, nullable=False)     # empreinte bcrypt, jamais le mdp
     actif = Column(Boolean, default=True)
+    est_admin = Column(Boolean, default=False)    # accès aux exports/admin
     cree_le = Column(DateTime, server_default=func.now())
 
     # Tous les liens de cet utilisateur vers des films (vu/note/urgence)
