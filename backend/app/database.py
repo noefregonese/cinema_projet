@@ -18,9 +18,13 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./cinema.db")
 
 # Certains hébergeurs (dont Neon) fournissent une URL en "postgres://" alors que
-# SQLAlchemy attend "postgresql://". On normalise pour éviter une erreur.
+# SQLAlchemy attend "postgresql://". On normalise, et on force l'usage du pilote
+# psycopg version 3 ("+psycopg") — celui installé via requirements.txt.
+# Sans ce "+psycopg", SQLAlchemy cherche par défaut l'ancien pilote psycopg2.
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+if DATABASE_URL.startswith("postgresql://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
 est_sqlite = DATABASE_URL.startswith("sqlite")
 
