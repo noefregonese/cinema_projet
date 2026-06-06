@@ -1,0 +1,92 @@
+/* ============================================================================
+   styles.css — Feuille de style globale
+   ----------------------------------------------------------------------------
+   ★ LE CENTRE DE TA PERSONNALISATION ★
+   Tout le design découle des variables ci-dessous (les « design tokens »).
+   Change une couleur, une police, un arrondi ici → tout le site suit.
+   ============================================================================ */
+
+:root {
+  /* ---- Couleurs ---- */
+  --bg:            #fbfaf7;   /* fond général, blanc cassé chaud */
+  --surface:       #ffffff;   /* cartes, panneaux */
+  --texte:         #1a1a18;   /* texte principal */
+  --texte-doux:    #6b6b66;   /* texte secondaire */
+  --bordure:       #e8e6e0;   /* lignes fines */
+  --accent:        #1a1a18;   /* couleur d'action (boutons), sobre */
+  --accent-clair:  #f0eee8;   /* survol discret */
+  --etoile:        #c8a04a;   /* notes / étoiles, touche dorée */
+  --danger:        #b4453a;
+
+  /* ---- Typographie ---- */
+  --font-titre: "Fraunces", Georgia, serif;
+  --font-corps: "Inter Tight", -apple-system, sans-serif;
+
+  /* ---- Formes & espacements ---- */
+  --rayon:      14px;   /* arrondi des cartes */
+  --rayon-sm:   9px;    /* arrondi des boutons/inputs */
+  --ombre:      0 1px 2px rgba(20,20,18,.04), 0 8px 24px rgba(20,20,18,.05);
+  --max-largeur: 1180px;
+}
+
+/* ---- Reset léger ---- */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--texte);
+  font-family: var(--font-corps);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; cursor: pointer; }
+input { font-family: inherit; }
+
+/* ---- Conteneur centré ---- */
+.conteneur {
+  max-width: var(--max-largeur);
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+/* ---- Titres ---- */
+h1, h2, h3 { font-family: var(--font-titre); font-weight: 600; line-height: 1.1; }
+h1 { font-size: clamp(2rem, 5vw, 3.2rem); letter-spacing: -0.02em; }
+h2 { font-size: 1.6rem; letter-spacing: -0.01em; }
+
+/* ---- Boutons ---- */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 20px;
+  border: 1px solid var(--accent);
+  border-radius: var(--rayon-sm);
+  background: var(--accent); color: var(--surface);
+  font-size: .95rem; font-weight: 500;
+  transition: transform .12s ease, opacity .12s ease;
+}
+.btn:hover { opacity: .88; }
+.btn:active { transform: translateY(1px); }
+.btn-fantome {
+  background: transparent; color: var(--texte); border-color: var(--bordure);
+}
+.btn-fantome:hover { background: var(--accent-clair); opacity: 1; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---- Champs ---- */
+.champ {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid var(--bordure);
+  border-radius: var(--rayon-sm);
+  background: var(--surface);
+  font-size: .98rem;
+  transition: border-color .15s ease;
+}
+.champ:focus { outline: none; border-color: var(--accent); }
+
+/* ---- Utilitaires ---- */
+.muet { color: var(--texte-doux); }
+.erreur { color: var(--danger); font-size: .9rem; }

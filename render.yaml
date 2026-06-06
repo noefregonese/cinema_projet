@@ -1,0 +1,18 @@
+# ============================================================================
+#  render.yaml — Configuration de déploiement du backend sur Render
+#  --------------------------------------------------------------------------
+#  Render lit ce fichier pour savoir comment construire et lancer l'API.
+#  Place-le à la RACINE du dépôt (cinema_projet/render.yaml).
+#
+#  Les variables d'environnement (DATABASE_URL, SECRET_KEY, TMDB_API_KEY,
+#  FRONTEND_URL) se renseignent dans l'interface Render, PAS ici (secrets).
+# ============================================================================
+
+services:
+  - type: web
+    name: cinema-api
+    runtime: python
+    rootDir: backend
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app.main:app -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT"
+    plan: free
